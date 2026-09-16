@@ -370,9 +370,21 @@ These are never relaxed:
 - A contract release is identified by the sha256 of the escrow WASM, which appears in its release notes. The frontend pins that hash, so a new contract build is a breaking change until the pin is updated.
 - Testnet deployments use `scripts/deploy-testnet.sh`. The factory id and WASM hash are published in this repository.
 
+### Testnet deployment
+
+| What | Id |
+|---|---|
+| Factory | `CDMCI4VW5XARBPITNHNENEDVKBMKDICFCKJJ3RYDAKDBZRQMGPUV5JIO` |
+| Escrow WASM hash | `7a91c255c29edb7114a546026e807f144a8adc58460e4608e314a77ac629281d` |
+| Settlement token, test asset SAC | `CBXMP6YK4B4WZKN4UAF7OZUEGFEUURVPSUQS5QGG5SG5DRWBRQDWAOOL` |
+
+The contract repository holds the same values in `deployments/testnet.env`, along with the admin, arbitrator and fee recipient. Clients pin the WASM hash above and must refuse to fund an escrow instance running anything else.
+
+One trade has been run end to end against this deployment, on the code path: [create](https://stellar.expert/explorer/testnet/tx/16515feb9764f9ef3021bdbd20744c01d467ce6eee22a8cb31d038b964589e7d), [fund](https://stellar.expert/explorer/testnet/tx/8e305e4323098a99564e985e3ca671e805219ae66250d1e3b17d42a5e15c1c02), [submit_proof](https://stellar.expert/explorer/testnet/tx/48c038bed1a5c6d8428339902cd74d54077cc7c494a51ba3499658db7e1b875a), then release with the buyer's delivery code. Of 100 units deposited, the seller received 98.5 and the fee recipient 1.5, and the escrow ended `Released` via `Code` holding nothing. The confirmation, dispute and timeout paths still need the same treatment before v1.0.
+
 ### Current gaps
 
-The contract repository declares Apache-2.0 but has no `LICENSE` file. The backend and frontend have no CI workflow and no `SECURITY.md`. Closing these is part of v1.0.
+The backend and frontend have no CI workflow and no `SECURITY.md`. Closing these is part of v1.0.
 
 ## Roadmap
 
