@@ -374,13 +374,13 @@ These are never relaxed:
 
 | What | Id |
 |---|---|
-| Factory | `CDMCI4VW5XARBPITNHNENEDVKBMKDICFCKJJ3RYDAKDBZRQMGPUV5JIO` |
-| Escrow WASM hash | `7a91c255c29edb7114a546026e807f144a8adc58460e4608e314a77ac629281d` |
-| Settlement token, test asset SAC | `CBXMP6YK4B4WZKN4UAF7OZUEGFEUURVPSUQS5QGG5SG5DRWBRQDWAOOL` |
+| Factory | `CDBD65SK43MNCD5JW7HXXV3EMG2OH2UJ3FKJ2O6OEQINV7NJZOIUQMRP` |
+| Escrow WASM hash | `2589c9a9876bd2940b8f4dc8ce2b13aa2c654601a066d27f58f254d6b45473aa` |
+| Settlement token, testnet USDC SAC | `CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA` |
 
-The contract repository holds the same values in `deployments/testnet.env`, along with the admin, arbitrator and fee recipient. Clients pin the WASM hash above and must refuse to fund an escrow instance running anything else.
+The contract repository holds the same values in `deployments/testnet.env`, and the full history of factory ids this network has had (see its README "Factory upgrades") in `deployments/testnet-factories.json`. Clients pin the WASM hash above and must refuse to fund an escrow instance running anything else.
 
-One trade has been run end to end against this deployment, on the code path: [create](https://stellar.expert/explorer/testnet/tx/16515feb9764f9ef3021bdbd20744c01d467ce6eee22a8cb31d038b964589e7d), [fund](https://stellar.expert/explorer/testnet/tx/8e305e4323098a99564e985e3ca671e805219ae66250d1e3b17d42a5e15c1c02), [submit_proof](https://stellar.expert/explorer/testnet/tx/48c038bed1a5c6d8428339902cd74d54077cc7c494a51ba3499658db7e1b875a), then release with the buyer's delivery code. Of 100 units deposited, the seller received 98.5 and the fee recipient 1.5, and the escrow ended `Released` via `Code` holding nothing. The confirmation, dispute and timeout paths still need the same treatment before v1.0.
+Redeployed 2026-10-07, replacing an earlier deployment that predated `salt`/factory-provenance, `unswept_fee`, the dispute/ruling hash commitments, `extend_delivery`/`extend_receipt` and `create_and_fund`. No end-to-end trade has been run against this deployment yet; the previous version of this section described one against the superseded deployment. Run one and update this section once the backend/frontend point at these ids. The confirmation, dispute and timeout paths still need the same treatment before v1.0.
 
 ### Current gaps
 
