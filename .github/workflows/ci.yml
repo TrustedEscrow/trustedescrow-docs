@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The deployment check reads the contract repo, so these docs can go stale
+  # without anything being pushed here. Catch that on a schedule too.
+  schedule:
+    - cron: '17 6 * * 1'
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # No dependencies on purpose: the checker is stdlib only, so it runs the
+      # same way here and on a laptop.
+      - name: Check docs
+        run: python3 scripts/check-docs.py
