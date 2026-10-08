@@ -223,8 +223,9 @@ The cache only answers "which escrows involve this address". The API labels list
 
 - **Sign-in.** The wallet signs a [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) message bound to the site and the network. The API issues an opaque session and stores only its hash.
 - **Drafts.** An escrow is negotiated before it exists on-chain. Each proposal is stored as a new revision and never edited. When both parties accept the same revision, its terms are frozen and `terms_hash = sha256(canonical_json(terms))` is fixed (RFC 8785). The buyer commits that hash in `create`. A draft is linked to its escrow only if every field committed on-chain matches the agreed terms.
-- **Chat and evidence.** Messages, photos and statements are too large and too private for the chain. Anything containing the escrow's delivery code is refused before it is stored.
-- **Two-factor authentication.** TOTP with backup codes. Sensitive backend actions need a recent step-up: signing in from a new device, changing the payout address, reading the code vault, and filing a dispute statement. 2FA cannot gate on-chain calls, because anyone holding their key can call the contract directly, and the product does not pretend otherwise.
+- **Chat and evidence.** Messages, photos and statements are too large and too private for the chain. Anything containing the escrow's delivery code is refused before it is stored. Blobs go to local disk or to any S3-compatible object store, chosen by `EVIDENCE_STORAGE_DRIVER`. Local disk is for development only: it does not survive a redeploy and cannot be shared across instances, so anything long-lived needs the object store.
+- **Two-factor authentication.** TOTP with backup codes. Sensitive backend actions need a recent step-up: signing in from a new device, changing the payout address, reading the code vault, and filing a dispute statement. 2FA cannot gate on-chain calls, because anyone holding their key can call the contract directly, and the product does not pretend otherwise. A step-up also covers `POST /me/sessions/revoke-all`, which ends every other session at once — the payout-address-changed notice tells a user to do exactly that if the change wasn't theirs, and one call is the difference between acting on that warning and deleting sessions one by one.
+- **Rate limits.** Beyond the global per-IP limit, the routes that cost someone else something are limited individually: messages, evidence uploads, the vault, and `POST /drafts`, which inserts rows and notifies a named counterparty, so any authenticated account could otherwise spam proposals at a stranger.
 - **Arbitration.** For configured arbitrators the API serves open disputes ordered by deadline. Each comes with a case file: live contract state, the agreed terms with the hash re-checked, chat, statements and evidence. It also serves two health figures: the share of releases that were two-sided, and the escalation rate.
 
 ### The encrypted code vault
@@ -241,9 +242,13 @@ A full database compromise yields encrypted blobs and chat logs, not the ability
 
 ### Notifications and keeper
 
-Notifications are planned from each fresh contract snapshot and cancelled when the state moves on. The buyer is reminded 24 hours before the receipt deadline. The seller is reminded 24 hours before the delivery deadline. Both parties are notified 72 hours before an arbitration deadline. Arbitrators are reminded at 72 and 24 hours.
+Notifications are planned from each fresh contract snapshot and cancelled when the state moves on. The buyer is reminded 24 hours before the funding deadline, and again 24 hours before the receipt deadline. The seller is reminded 24 hours before the delivery deadline. Both parties are notified 72 hours before an arbitration deadline. Arbitrators are reminded at 72 and 24 hours.
 
-The keeper watches for passed deadlines and escrows near expiry. It calls `cancel`, `refund_after_delivery_timeout`, `escalate`, `refund_after_arbitration_timeout` and `bump`. Every one of those calls is open to anyone, and the contract decides where the funds go. The keeper runs as its own process so that the API never holds a key. If it stops, nobody is stranded.
+The funding reminder matters as much as the others: an unfunded escrow is cancellable by anyone once its deadline passes, so a buyer who created one and forgot is the one person who can still act.
+
+A send that fails is retried rather than dropped. The dispatcher records the attempt and the error, backs off exponentially, and gives up after five tries — at which point the notification is still visible in the app, because email was only ever the second channel.
+
+The keeper watches for passed deadlines, escrows near expiry, and escrows holding a fee that failed to reach `fee_recipient` on release. It calls `cancel`, `refund_after_delivery_timeout`, `escalate`, `refund_after_arbitration_timeout`, `sweep_fee` and `bump`. Every one of those calls is open to anyone, and the contract decides where the funds go. The keeper runs as its own process so that the API never holds a key. If it stops, nobody is stranded.
 
 ## The frontend
 
@@ -394,10 +399,27 @@ The contract repository holds the same values in `deployments/testnet.env`, and 
 
 Redeployed 2026-10-07, replacing an earlier deployment that predated `salt`/factory-provenance, `unswept_fee`, the dispute/ruling hash commitments, `extend_delivery`/`extend_receipt` and `create_and_fund`. No end-to-end trade has been run against this deployment yet; the previous version of this section described one against the superseded deployment. Run one and update this section once the backend/frontend point at these ids. The confirmation, dispute and timeout paths still need the same treatment before v1.0.
 
+### What is actually running
+
+The architecture above describes four backend processes. The current testnet deployment runs **only the API**. Render's free tier does not run background workers, so the indexer, notifier and keeper are built and tested but not deployed. That is a deployment limit, not a design change, and it is worth stating plainly because several things the documents promise do not happen on the live demo:
+
+| Process | Deployed | What is missing without it |
+|---|---|---|
+| API | yes | — |
+| Indexer | no | The read cache is never refreshed, so list views can show a state the chain has already moved past. Escrow detail pages are unaffected: they read the contract directly. |
+| Notifier | no | No reminder or alert emails are sent. Notifications are still created and visible in the app. |
+| Keeper | no | No automatic timeouts, TTL bumps or fee sweeps. Every one of those calls is permissionless, so anyone — either party included — can still make them from a CLI or the app. |
+
+Nothing here puts funds at risk: all four processes are conveniences, and the contract enforces the rules either way. The honest summary is that the live demo shows the trade path, not the unattended operation of it.
+
+Two further limits of the free tier: the API sleeps after roughly 15 minutes idle and takes around 23 seconds to answer the first request after that, and the managed Postgres instance expires 30 days after creation.
+
 ### Current status and gaps
 
-- **CI workflows & Security policies:** Implemented across all repositories (`trustedescrow-contract`, `trustedescrow-backend`, `trustedescrow-frontend`). Each repository has active automated test/lint CI workflows and published `SECURITY.md` policies.
+- **CI workflows & Security policies:** Implemented across all repositories (`trustedescrow-contract`, `trustedescrow-backend`, `trustedescrow-frontend`, `trustedescrow-docs`). Each has an automated CI workflow, and the code repositories publish a `SECURITY.md`.
 - **Auditing:** The contracts have not undergone an independent external audit. No mainnet funds should be held until complete.
+- **End-to-end:** No full trade has been run against the current testnet deployment yet.
+- **Seller trustlines:** The app prompts the buyer to add a settlement-asset trustline before depositing, but never prompts the seller. A seller without one cannot receive the payout, and the release reverts. Until that is fixed, a seller has to add the trustline themselves.
 
 ## Roadmap
 

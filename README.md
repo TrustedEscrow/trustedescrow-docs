@@ -50,9 +50,12 @@ The three code repositories are independent and can be developed and deployed se
 |---|---|---|
 | **Production Frontend** | Vercel (Production) | [trustedescrow-frontend-eta.vercel.app](https://trustedescrow-frontend-eta.vercel.app) |
 | **Direct On-Chain Explorer** | Vercel | [trustedescrow-frontend-eta.vercel.app/escrow](https://trustedescrow-frontend-eta.vercel.app/escrow) |
+| **Backend API** | Render (free tier) | [trustescrow-api-k5us.onrender.com](https://trustescrow-api-k5us.onrender.com/healthz) |
 | **Factory Contract** | Stellar Testnet | [`CDBD65SK43MNCD5JW7HXXV3EMG2OH2UJ3FKJ2O6OEQINV7NJZOIUQMRP`](https://stellar.expert/explorer/testnet/contract/CDBD65SK43MNCD5JW7HXXV3EMG2OH2UJ3FKJ2O6OEQINV7NJZOIUQMRP) |
 | **Escrow WASM Hash** | Stellar Testnet | `2589c9a9876bd2940b8f4dc8ce2b13aa2c654601a066d27f58f254d6b45473aa` |
 | **Settlement Rail** | Stellar Testnet USDC SAC | [`CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) |
+
+Of the backend's four processes, this deployment runs **only the API**: Render's free tier does not run background workers, so the indexer, notifier and keeper are built and tested but not deployed. In practice that means list views can lag the chain, no emails are sent, and no timeout or TTL call happens on its own — though all of those calls are permissionless, so anyone can still make them. Escrow pages read the contract directly and are unaffected. See [ARCHITECTURE.md](ARCHITECTURE.md#what-is-actually-running) for the detail. The API also sleeps after about 15 minutes idle and takes roughly 23 seconds to answer the first request after that.
 
 ## Quickstart
 
