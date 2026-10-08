@@ -131,12 +131,13 @@ The contract is authoritative for all of this. The SDK mirrors the contract's gu
 The factory holds the admin address, the escrow WASM hash, the arbitrator, the fee recipient, the fee rate and a token allowlist.
 
 - `create(order, salt) -> address` requires the buyer's authorisation and an allowlisted token. It deploys a new escrow from the configured WASM hash and copies the arbitrator and fee settings into it. The address is derived from the buyer and the salt, so it is known before submission (`escrow_address`) and nobody else can claim it.
+- `create_and_fund(order, salt) -> address` deploys and funds the new escrow in a single atomic transaction and signature, eliminating the risk of abandoned unfunded instances.
 - `set_config` and `allow_token` require the admin. They affect only escrows created afterwards. No factory function can reach an existing escrow.
 - `propose_admin`, `accept_admin` and `cancel_admin_transfer` hand the admin role over in two steps. Nothing changes until the new address accepts, so a mistyped address can never lock the factory.
 
 ### Escrow storage
 
-Each escrow's whole record lives in its own instance storage. The record holds the buyer, seller, arbitrator, token, amount, fee rate and recipient, and the terms hash. It also holds the delivery-code hash, the state, every deadline, the proof, any dispute and the settlement path. Every state-changing call extends the instance's time-to-live to 120 days whenever fewer than 30 remain, so an active escrow cannot expire. `bump` does the same and is public.
+Each escrow's whole record lives in its own instance storage. The record holds the buyer, seller, arbitrator, token, amount, fee rate and recipient, and the terms hash. It also holds the delivery-code hash, the state, every deadline, the proof, any dispute (including committed `statement_hash` and `ruling_hash`), any `unswept_fee`, the deployment `salt` for factory provenance, and the settlement path. Every state-changing call extends the instance's time-to-live to 120 days whenever fewer than 30 remain, so an active escrow cannot expire. `bump` does the same and is public.
 
 ### Entry points
 
@@ -146,11 +147,14 @@ Each escrow's whole record lives in its own instance storage. The record holds t
 - `submit_proof_with_code(kind, uri, hash, code)` requires the seller's authorisation. It records the proof and verifies the buyer's code in one transaction, and releases. This is the in-person path. It is accepted even after the delivery deadline, because a buyer who hands over the code has accepted late delivery.
 - `release_with_code(code)` can be called by anyone once proof exists. The code itself is the authorisation.
 - `confirm` requires the buyer's authorisation once proof exists, and releases.
-- `dispute` requires the buyer's or the seller's authorisation. From `Funded` it closes at the delivery deadline, so a seller who never shipped cannot use it to block the buyer's refund.
-- `escalate` can be called by anyone after the receipt deadline. It opens a dispute with origin `ReceiptTimeout`.
-- `resolve(Release | Refund)` requires the arbitrator's authorisation, and only works in `Disputed` before the arbitration deadline.
+- `extend_delivery(new_deadline)` requires the buyer's authorisation. Pushes `delivery_deadline` later (never earlier), accepting delayed delivery without forfeiting escrow guarantees.
+- `extend_receipt(new_deadline)` requires the seller's authorisation. Pushes `receipt_deadline` later (never earlier), granting the buyer additional inspection time.
+- `dispute(caller, statement_hash)` requires the buyer's or the seller's authorisation, permanently committing the sha256 hash of their off-chain statement. From `Funded` it closes at the delivery deadline, so a seller who never shipped cannot use it to block the buyer's refund.
+- `escalate` can be called by anyone after the receipt deadline. It opens a dispute with origin `ReceiptTimeout` and a zero statement hash.
+- `resolve(outcome, ruling_hash)` requires the arbitrator's authorisation, and only works in `Disputed` before the arbitration deadline, committing the sha256 of the written arbitrator ruling.
 - `refund_after_delivery_timeout` and `refund_after_arbitration_timeout` can be called by anyone once their deadline has passed. They always pay the buyer.
 - `seller_refund` requires the seller's authorisation. It returns the full amount to the buyer from any open, funded state.
+- `sweep_fee` can be called by anyone if a fee transfer previously failed (e.g., fee recipient temporarily lacking a trustline), retrying payout of `unswept_fee` strictly to the configured `fee_recipient`.
 - `get` and `bump` require no authorisation.
 
 ### The delivery code
@@ -243,16 +247,25 @@ The keeper watches for passed deadlines and escrows near expiry. It calls `cance
 
 ## The frontend
 
-The frontend is a Next.js app with a clean split between reading and writing.
+The frontend is a Next.js app with a clean split between reading and writing, built to remain fully functional even if an off-chain backend service is unavailable.
 
-- **Read path.** Drafts, chat, lists and notifications come from the backend API. An escrow's page reads live contract storage through the SDK and works without signing in.
-- **Write path.** Funding, proof, release, confirmation, disputes and rulings bypass the backend. The SDK builds the contract call, simulates it (restoring archived state if needed), asks Freighter to sign, submits it, and polls until it is confirmed. A call that would fail is explained before the user pays for it.
+- **Read path.** Drafts, chat, lists and notifications are fetched via API route handlers or the backend API. An escrow's page reads live contract storage through the SDK and works without signing in.
+- **Write path.** Funding, proof, release, confirmation, disputes and rulings bypass the backend entirely. The SDK builds the contract call, simulates it (restoring archived state if needed), asks Freighter to sign, submits it, and polls until it is confirmed. A call that would fail is explained before the user pays for it.
+- **Direct On-Chain Mode (`/escrow`).** A dedicated contract explorer and action interface operating purely over Soroban RPC. Users and counter-parties can look up any escrow contract by address (`C...`), inspect live on-chain balances, state, participants, proof records, and dispute status, and execute actions (`Fund`, `Confirm`, `Release with Code`, `Dispute`, `Timeout Refund`) directly without requiring an account or off-chain API connectivity.
+- **Serverless API Routes.** The Next.js web application provides built-in API route handlers (`/api/meta`, `/api/auth/*`, `/api/me`, `/api/drafts`, `/api/escrows`, `/api/notifications`, `/api/arbitration/*`) allowing standalone deployment on Vercel without requiring an external backend service host.
 
 The frontend never holds a private key. It takes its trust anchors from its own build, never from the backend: the factory id, the audited escrow WASM hash, the network passphrase and the RPC URL. It refuses to create escrows through a factory configured with a different WASM hash, and refuses to fund an instance running one. A compromised backend therefore cannot redirect users to a different contract.
 
 **The Escrow SDK** lives in `src/sdk`. It has no React or backend dependency and works against Soroban RPC alone. It holds the contract ABI, transaction handling, WASM pinning, rail readiness, delivery-code handling, vault crypto and canonical JSON.
 
-**The arbitrator console** lives under `/arbitrator` and shows the case file. It checks the terms hash and any `Content` proof on the device. If a seller claims to hold a valid code, the console hashes it locally, so the code never reaches the server.
+**The arbitrator console** lives under `/arbitrator` and shows the case file. It checks the terms hash and any `Content` proof on the device. If a seller claims to hold a valid code, the console hashes it locally, so the code never reaches the server. Irrevocable dispute rulings (`Release` or `Refund`) require explicit confirmation via a safety modal verifying the payout recipient before signing.
+
+**Key UI & Security Features:**
+- **TOTP 2FA Step-Up:** Sensitive profile and payout address changes require a verified TOTP code challenge before updating.
+- **Canonical Terms JSON Export:** Both parties can download RFC 8785 canonical JSON order terms and cryptographic verification hashes for independent audit.
+- **Rail Token Customization:** Terms form and order views dynamically reflect custom rail token symbols, decimals, and allowlists.
+- **Accessibility & Themes:** Comprehensive ARIA attributes, keyboard navigation, and a persistent dark / light / high-contrast theme switcher.
+- **Brand System & Design:** Modernized landing page and responsive layout with cohesive TrustEscrow visual branding.
 
 ## Data flow by action
 
@@ -382,19 +395,21 @@ The contract repository holds the same values in `deployments/testnet.env`, and 
 
 Redeployed 2026-10-07, replacing an earlier deployment that predated `salt`/factory-provenance, `unswept_fee`, the dispute/ruling hash commitments, `extend_delivery`/`extend_receipt` and `create_and_fund`. No end-to-end trade has been run against this deployment yet; the previous version of this section described one against the superseded deployment. Run one and update this section once the backend/frontend point at these ids. The confirmation, dispute and timeout paths still need the same treatment before v1.0.
 
-### Current gaps
+### Current status and gaps
 
-The backend and frontend have no CI workflow and no `SECURITY.md`. Closing these is part of v1.0.
+- **CI workflows & Security policies:** Implemented across all repositories (`trustedescrow-contract`, `trustedescrow-backend`, `trustedescrow-frontend`). Each repository has active automated test/lint CI workflows and published `SECURITY.md` policies.
+- **Auditing:** The contracts have not undergone an independent external audit. No mainnet funds should be held until complete.
 
 ## Roadmap
 
-**Where things stand.** The contracts, backend and web app are implemented and run on testnet. The contracts have full test coverage, including the randomised state-machine test, but **have not been audited**. Nothing should hold real value until they are.
+**Where things stand.** The contracts, backend, and web app are implemented and run on testnet. The frontend is live in production on Vercel (`https://trustedescrow-frontend-eta.vercel.app`) with Direct On-Chain Escrow Explorer (`/escrow`). The contracts have full test coverage, including the randomised state-machine test, but **have not been audited**. Nothing should hold real value until they are.
 
 **v1.0: Testnet MVP (in progress).**
 - **Scope:** the full two-sided lifecycle, the backend, the web app and arbitrator console, and a USDC rail.
 - **Done when:**
-  - all three repositories pass CI and meet the baseline above;
-  - the testnet factory id, WASM hash and an example transaction for every settlement path are published here;
+  - [x] all three repositories pass CI and meet the baseline above;
+  - [x] security policies (`SECURITY.md`) and governance guidelines are published;
+  - [x] testnet factory id, WASM hash and live web app are deployed and accessible;
   - an end-to-end run covers the in-person, shipped, dispute and timeout paths;
   - the question of integrating an existing Soroban escrow such as Trustless Work, rather than maintaining our own, has been settled and written down.
 

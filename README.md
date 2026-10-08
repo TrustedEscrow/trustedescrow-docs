@@ -44,13 +44,23 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the precise model and the system desi
 
 The three code repositories are independent and can be developed and deployed separately. The contracts are the only component that holds funds or enforces rules; the backend and frontend are conveniences built around them. Every escrow can still be completed, disputed or timed out from a CLI with neither of them running.
 
+## Live Deployments
+
+| Component | Network / Host | URL / Contract ID |
+|---|---|---|
+| **Production Frontend** | Vercel (Production) | [trustedescrow-frontend-eta.vercel.app](https://trustedescrow-frontend-eta.vercel.app) |
+| **Direct On-Chain Explorer** | Vercel | [trustedescrow-frontend-eta.vercel.app/escrow](https://trustedescrow-frontend-eta.vercel.app/escrow) |
+| **Factory Contract** | Stellar Testnet | [`CDBD65SK43MNCD5JW7HXXV3EMG2OH2UJ3FKJ2O6OEQINV7NJZOIUQMRP`](https://stellar.expert/explorer/testnet/contract/CDBD65SK43MNCD5JW7HXXV3EMG2OH2UJ3FKJ2O6OEQINV7NJZOIUQMRP) |
+| **Escrow WASM Hash** | Stellar Testnet | `2589c9a9876bd2940b8f4dc8ce2b13aa2c654601a066d27f58f254d6b45473aa` |
+| **Settlement Rail** | Stellar Testnet USDC SAC | [`CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA`](https://stellar.expert/explorer/testnet/contract/CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA) |
+
 ## Quickstart
 
 Each repository has its own setup instructions in its README. End to end:
 
 1. **Deploy the contracts** (`trustedescrow-contract`) to testnet with `scripts/deploy-testnet.sh`. Note the factory id and escrow WASM hash it writes to `deployments/testnet.env`.
 2. **Run the backend** (`trustedescrow-backend`) pointed at that factory id. It indexes escrow events into PostgreSQL and serves the API.
-3. **Run the frontend** (`trustedescrow-frontend`) pointed at the backend API, the factory id and the escrow WASM hash. Connect Freighter on testnet and create your first escrow.
+3. **Run or visit the frontend** (`trustedescrow-frontend`): test online at [trustedescrow-frontend-eta.vercel.app](https://trustedescrow-frontend-eta.vercel.app) or run locally pointed at the factory id and the escrow WASM hash. Connect Freighter on testnet and create or inspect an escrow.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) walks through all three steps in detail, including which value goes where.
 
@@ -64,7 +74,16 @@ Each repository has its own setup instructions in its README. End to end:
 
 ## Status
 
-v1 is implemented and runs on Stellar testnet. The contracts **have not been audited**. Do not use them to hold real value until an external review has been completed and published. See the roadmap in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
+v1 is implemented and runs live on Stellar testnet. The frontend is deployed in production on Vercel at [trustedescrow-frontend-eta.vercel.app](https://trustedescrow-frontend-eta.vercel.app), featuring:
+- A brand redesign and interactive marketing landing page (`/`).
+- Direct On-Chain Escrow Explorer (`/escrow`) allowing anyone to inspect, fund, and manage contracts directly on-chain via Soroban RPC without requiring an off-chain server.
+- Web app and arbitrator console (`/arbitrator`) with confirmation modals preventing accidental irreversible rulings.
+- Enhanced security with TOTP 2FA step-up prompts for payout address updates.
+- Downloadable cryptographic terms JSON proofs (RFC 8785) with committed terms hashes.
+- Comprehensive accessibility with ARIA attributes and focus management.
+- Dynamic theme switcher supporting light, dark, and system preference detection.
+
+The smart contracts **have not been audited**. Do not use them to hold real value until an external review has been completed and published. See the roadmap in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap).
 
 ## License
 
