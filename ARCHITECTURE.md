@@ -418,7 +418,7 @@ Two further limits of the free tier: the API sleeps after roughly 15 minutes idl
 
 - **CI workflows & Security policies:** Implemented across all repositories (`trustedescrow-contract`, `trustedescrow-backend`, `trustedescrow-frontend`, `trustedescrow-docs`). Each has an automated CI workflow, and the code repositories publish a `SECURITY.md`.
 - **Auditing:** The contracts have not undergone an independent external audit. No mainnet funds should be held until complete.
-- **End-to-end:** No full trade has been run against the current testnet deployment yet.
+- **End-to-end:** No full trade has been run against the current testnet deployment yet — see [Testnet deployment](#testnet-deployment) above, which is the one place that status is maintained.
 - **Seller trustlines:** The app prompts the buyer to add a settlement-asset trustline before depositing, but never prompts the seller. A seller without one cannot receive the payout, and the release reverts. Until that is fixed, a seller has to add the trustline themselves.
 
 ## Roadmap
